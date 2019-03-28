@@ -1,2 +1,3 @@
-# nlp
-biyelpwf
+# Bayesian Network For NLP
+
+todo
