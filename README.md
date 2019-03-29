@@ -1,3 +1,9 @@
 # Bayesian Network For NLP
 
-todo
+## 1. parse corpus (support .xml)
+
+## 2. build graph
+
+## 3. train
+
+## 4. test
