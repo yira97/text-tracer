@@ -1,6 +1,11 @@
+# IDE project configeration file
 .vscode
 
-bayesian_network_for_nlp
-
+# macOS filesystem file
 .DS_Store
-bayesian_network_for_nlp/*
+
+# generative test file
+src/test/temp/*
+
+# generative bin file 
+*.out

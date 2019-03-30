@@ -16,7 +16,7 @@ void test_split() {
   xmlParser xp(
       "/Users/ethan/Documents/Proj/xcode/Bayesian-Network-for-NLP/"
       "bayesian_network_for_nlp/test_split.html",
-      "/Users/ethan/temp/");
+      "t");
 
   xp.splitToFiles("fuck", 1000);
 }

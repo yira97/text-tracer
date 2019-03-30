@@ -8,9 +8,10 @@
 
 #include <iostream>
 #include "graph.hpp"
-#include "test/xml_parser_test.hpp"
+#include "xml_parser.hpp"
 int main(int argc, char const *argv[]) {
-  // structure_test();
-
+  xmlParser xpsr{"/Users/ethan/Downloads/enwiki-latest-pages-articles.xml",
+                 "test/temp"};
+  xpsr.splitToFiles("page", 1000000);
   return 0;
 }

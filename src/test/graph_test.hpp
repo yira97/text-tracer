@@ -13,6 +13,7 @@
 
 void structure_test() {
   using namespace bys;
+  // todo : structure_test();
   bys::Graph g("nlp");
   auto a = std::make_shared<Node>();
   auto b = std::make_shared<Node>();
