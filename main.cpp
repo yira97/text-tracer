@@ -8,28 +8,12 @@
 
 #include <iostream>
 #include "graph.hpp"
-using namespace bys;
+#include "xml_parser.hpp"
 int main(int argc, char const *argv[]) {
-  Graph g("nlp");
-  auto a = std::make_shared<Node>();
-  auto b = std::make_shared<Node>();
-  auto c = std::make_shared<Node>();
-  auto d = std::make_shared<Node>();
-  auto e = std::make_shared<Node>();
-  g.addNode(a);
-  g.addNode(b);
-  g.addNode(c);
-  g.addNode(d);
-  g.addNode(e);
-
-  g.addEdge(a, b);
-  g.addEdge(b, c);
-  g.addEdge(c, d);
-  g.addEdge(c, e);
-  g.addEdge(d, e);
-  // g.addEdge(e,a);
-  //g.addEdge(e, e);
-  g.printGraph();
-
-  return 0;
+    //structure_test();
+    
+    //xmlParser("/Users/ethan/Downloads/enwiki-latest-pages-articles.xml","/Users/ethan/temp/")
+    xmlParser xp ("/Users/ethan/Documents/Proj/xcode/Bayesian-Network-for-NLP/bayesian_network_for_nlp/test_split.html","/Users/ethan/temp/");
+    xp.splitToFiles("fuck", 1000);
+    return 0;
 }
