@@ -1,6 +1,6 @@
 # Bayesian Network For NLP
 there is two version of this project
-1. c++11(decrepit)
+1. c++11 (Suspend)
 2. python3
 ## install
 ### 1. get the latest version of wiki dumpfile
@@ -32,7 +32,7 @@ Method Preview:
 * [ ] bayesian network inference
 ---
 ### 3. advance application
-* [x ] building graph from structured documents
+* [x] building graph from structured documents
 ---
 ## 4. test
 * [x] graph_test
