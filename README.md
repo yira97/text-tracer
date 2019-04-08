@@ -29,6 +29,7 @@ Method Preview:
 * [x] edges
 * [x] nodes
 * [ ] probabilistic table
+* [ ] tfidf
 * [ ] bayesian network inference
 ---
 ### 3. advance application
