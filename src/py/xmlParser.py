@@ -2,8 +2,9 @@ import re
 import os
 
 
-# [remark] : vertex should not be changed by dot grammar
-class vertex:
+# [remark] : Vertex should not be changed by dot grammar
+class Vertex:
+
     def __init__(self, h, txt):
         self.h = h  # level position
         self.txt = txt  # innerHTML
@@ -11,10 +12,22 @@ class vertex:
         self.tf = {}  # term frequencies    e.g.{$term:frequency}
 
     def getDescendants(self):
-        if len(self.children) == 0:
-            return self
-        else:
-            return [c.getDescendants() for c in self.children]
+        l = []
+        Vertex.GetDescendants(self, l)
+        return l
+
+    @staticmethod  # For more general purposes
+    def AllVertexFromVertexs(vs):
+        l = []
+        for v in vs:
+            Vertex.GetDescendants(v, l)
+        return l
+
+    @staticmethod
+    def GetDescendants(v, l):
+        for c in v.children:
+            Vertex.GetDescendants(c, l)
+        l.append(v)
 
     # [method] return the frequency of the term
     # [params] term should only contains printable character
@@ -29,11 +42,13 @@ class vertex:
 # [parms] inputDir : output path of wikiStanderdize
 #            level : max overlaping level
 # [todo] adapt for any xml tag
-class graph:
+class Graph:
     def __init__(self, inputFilePath, level=4):
         self.inputFilePath = inputFilePath
         self.level = level  # max overlaping level
-        self.endNum = 0  # num of the last layer
+        self.layerNum = {}  # num of the every layer
+        for i in range(0, level+1):
+            self.layerNum[i] = 0
         self.roots = []  # document's roots
         self.terms = {}  # {term:idf}
 
@@ -41,20 +56,25 @@ class graph:
         for f in allfilepaths(self.inputFilePath):
             with open(f, "r", encoding="utf-8") as f_read:
                 docStr = f_read.read()
-                self.roots.append(graph.getDocNodes(docStr, level))
+                self.roots.append(Graph.GetDocNodes(docStr, level))
 
-        # init terms
+        # init terms (must before init layer number)
         for t in self.getAllTerminologys(level):
-            self.terms[t] = 0
+            self.terms[t] = self.layerNum.copy()
 
-        # init endNum
-        for root in self.roots:
-            for n in root.getDescendants():
-                if n.level == self.level:
-                    self.endNum += 1
+        # init layer number
+        for v in Vertex.AllVertexFromVertexs(self.roots):
+            self.layerNum[v.h] += 1
+
+        # init idf
+        self.setIDF()
 
     def setIDF(self):
-        pass
+        allVertexs = Vertex.AllVertexFromVertexs(self.roots)
+        for t in self.terms:
+            for v in allVertexs:
+                if t in v.txt:
+                    self.terms[t][v.h] += 1
 
     def setTF(self):
         pass
@@ -79,7 +99,7 @@ class graph:
 
     # [params] do not pass h paramerter.
     @staticmethod
-    def getDocNodes(txt, maxDeep=4, h=1):
+    def GetDocNodes(txt, maxDeep=4, h=1):
         if len(txt) == 0:
             return
         stri = r"<h"+str(h)+r">.*?</h"+str(h) + \
@@ -98,8 +118,8 @@ class graph:
         if len(inners) != 0:
             for i in inners:
                 if (h <= maxDeep):
-                    children.append(graph.getDocNodes(i[0], maxDeep, h+1))
-        v = vertex(h - 1, re.sub(r'<.*>', "", txt))
+                    children.append(Graph.GetDocNodes(i[0], maxDeep, h+1))
+        v = Vertex(h - 1, re.sub(r'<.*>', "", txt))
         v.children = children
         return v
 
@@ -127,8 +147,9 @@ class wikiProcessor:
             txt = f_read.read()
 
         txt = re.sub("<doc.*>", "<doc>", txt)
-        txt = re.sub("<li>.*</li>", "", txt)
+        txt = re.sub(r"<li>.*</li>", "", txt)
         txt = re.sub(r"<ul>[\s\S]*?</ul>", "", txt)
+        txt = re.sub(r"<ol>[\s\S]*?</ol>", "", txt)
         txt = re.sub("</ul>", "", txt)
         txt = re.sub("&lt;/a&gt;", "", txt)
         txt = re.sub("&lt;a href=.*?&gt;", "", txt)
@@ -172,12 +193,13 @@ def allfilepaths(inputDir, containHidden=False):
 
 
 def init():
-    inputFilePath = "/Users/ethan/Development/wikiextractor/text2/"
-    outputFilePath = "/Users/ethan/Development/temp/s/"
+    inputFilePath = "/Users/ethan/Documents/Development/wikiextractor/text2/"
+    outputFilePath = "/Users/ethan/Documents/Development/temp/s/"
 
     wp = wikiProcessor(inputFilePath, outputFilePath)
     # wp.run()
-    t = graph(outputFilePath, 3)
+    t = Graph(outputFilePath, 3)
+    print(t)
 
 
 if __name__ == "__main__":
