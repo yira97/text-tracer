@@ -1,6 +1,6 @@
 # Bayesian Network For NLP
 there is two version of this project
-1. c++11 (Suspend)
+1. ~~c++11~~
 2. python3
 ## install
 ### 1. get the latest version of wiki dumpfile
@@ -16,7 +16,7 @@ there is two version of this project
     $ cd .. && git clone https://github.com/ethanmiles/Bayesian-Network-for-NLP && cd Bayesian-Network-for-NLP
     $ python3 xmlParser.py
 
-### 4. inference test
+### 4. ~~inference test~~
     $ python3 xmlParser.py -t "Heavy metal music"
 ## dev schedule
 ### 1. corpus processing
@@ -28,8 +28,8 @@ Method Preview:
 ### 2. bayesian graph construction
 * [x] edges
 * [x] nodes
-* [ ] probabilistic table
-* [ ] bayesian network inference
+* [x] probabilistic table
+* [x] bayesian network inference
 ---
 ### 3. advance application
 * [x] building graph from structured documents

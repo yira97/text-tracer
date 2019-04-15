@@ -1,5 +1,18 @@
 import re
 import os
+import sys
+import argparse
+
+parser = argparse.ArgumentParser(
+    description="document indexing script using bayesian network. for more information see https://github.com/ethanmiles/Bayesian-Network-for-NLP")
+parser.add_argument('--input', type=str,
+                    help='directory hold result of wikiextractor')
+parser.add_argument('--output', type=str, help='work directory')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('-p', '--preprocess',
+                   action='store_true', help='preprocess')
+group.add_argument('-q', '--query', type=str, help='query')
+args = parser.parse_args()
 
 
 # [remark] : Vertex should not be changed by dot grammar
@@ -35,8 +48,11 @@ class Vertex:
         if term in self.tf:
             return self.tf[term]
         else:
-            self.tf[term] = len(re.findall(term, self.txt))
+            self.setTF(term)
             return self.tf[term]
+
+    def setTF(self, term):
+        self.tf[term] = len(re.findall(term, self.txt))
 
 
 # [parms] inputDir : output path of wikiStanderdize
@@ -59,7 +75,7 @@ class Graph:
                 self.roots.append(Graph.GetDocNodes(docStr, level))
 
         # init terms (must before init layer number)
-        for t in self.getAllTerminologys(level):
+        for t in self.getAllTerminologys():
             self.terms[t] = self.layerNum.copy()
 
         # init layer number
@@ -68,6 +84,8 @@ class Graph:
 
         # init idf
         self.setIDF()
+        self.setDF()
+        self.setP()
 
     def setIDF(self):
         allVertexs = Vertex.AllVertexFromVertexs(self.roots)
@@ -76,16 +94,40 @@ class Graph:
                 if t in v.txt:
                     self.terms[t][v.h] += 1
 
-    def setTF(self):
+    def getIDF(self, termName, level=0):
+        if level == 0:
+            level = self.level
+        return self.terms[termName][level]/(self.layerNum[level])
+
+    def setDF(self):
+        for v in Vertex.AllVertexFromVertexs(self.roots):
+            if v.h == self.level:
+                for t in self.getAllTerminologys():
+                    v.getTF(t)
+            else:
+                pass  # note which doesn't direct connect with terminoloty do not have df
+
+    def setP(self):
+        for n in Vertex.AllVertexFromVertexs(self.roots):
+            count = 0
+            if n.h == self.level:
+                for t in self.getAllTerminologys():
+                    ttf = n.getTF(t)
+                    if ttf > 0:
+                        count += ttf*self.getIDF(t)
+                n.p = count
+            else:
+                for parent in Vertex.AllVertexFromVertexs(self.roots):
+                    if n in parent.children:
+                        count += 1
+                n.p = 1/count
+
+    def search(self, query):
         pass
 
-    def propagateTF(self):
-        pass
-
-    def propagateIDF(self):
-        pass
-
-    def getAllTerminologys(self, level):
+    def getAllTerminologys(self, level=0):
+        if level == 0:
+            level = self.level
         terms = []
         stri = ""
         for i in range(1, level+1):
@@ -192,15 +234,27 @@ def allfilepaths(inputDir, containHidden=False):
     return inputFileNames
 
 
-def init():
+def query(wp, query):
+    g = Graph(outputFilePath, 3)
+    g.search(query)
+
+
+def preprocess(wp):
+    wp.run()
+
+
+def test():
+    pass
+
+
+if __name__ == "__main__":
     inputFilePath = "/Users/ethan/Documents/Development/wikiextractor/text2/"
     outputFilePath = "/Users/ethan/Documents/Development/temp/s/"
 
     wp = wikiProcessor(inputFilePath, outputFilePath)
-    # wp.run()
-    t = Graph(outputFilePath, 3)
-    print(t)
 
-
-if __name__ == "__main__":
-    init()
+    if args.preprocess:
+        preprocess(wp)
+    elif args.query:
+        print("query expression : ", query)
+        query(wp, args.query)
