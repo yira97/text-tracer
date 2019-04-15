@@ -2,16 +2,19 @@ import re
 import os
 import sys
 import argparse
+import math
 
 parser = argparse.ArgumentParser(
     description="document indexing script using bayesian network. for more information see https://github.com/ethanmiles/Bayesian-Network-for-NLP")
 parser.add_argument('--input', type=str,
                     help='directory hold result of wikiextractor')
 parser.add_argument('--output', type=str, help='work directory')
+
 group = parser.add_mutually_exclusive_group()
 group.add_argument('-p', '--preprocess',
                    action='store_true', help='preprocess')
-group.add_argument('-q', '--query', type=str, help='query')
+group.add_argument('-q', '--query', nargs='+', help='query')
+
 args = parser.parse_args()
 
 
@@ -23,6 +26,7 @@ class Vertex:
         self.txt = txt  # innerHTML
         self.children = []  # child nodes
         self.tf = {}  # term frequencies    e.g.{$term:frequency}
+        self.p = 0
 
     def getDescendants(self):
         l = []
@@ -54,10 +58,21 @@ class Vertex:
     def setTF(self, term):
         self.tf[term] = len(re.findall(term, self.txt))
 
+    # def getDady(self, crowd):
+    #     for men in crowd:
+    #         if self in men.children:
+    #             return men
+        # print("poor boy.")
+
+    # def countBro(self, crowd):
+    #     return len(self.getDady(crowd).children)
+
 
 # [parms] inputDir : output path of wikiStanderdize
 #            level : max overlaping level
 # [todo] adapt for any xml tag
+
+
 class Graph:
     def __init__(self, inputFilePath, level=4):
         self.inputFilePath = inputFilePath
@@ -66,7 +81,7 @@ class Graph:
         for i in range(0, level+1):
             self.layerNum[i] = 0
         self.roots = []  # document's roots
-        self.terms = {}  # {term:idf}
+        self.terms = {}  # {term: {level:count} }
 
         # init roots
         for f in allfilepaths(self.inputFilePath):
@@ -85,7 +100,6 @@ class Graph:
         # init idf
         self.setIDF()
         self.setDF()
-        self.setP()
 
     def setIDF(self):
         allVertexs = Vertex.AllVertexFromVertexs(self.roots)
@@ -93,11 +107,19 @@ class Graph:
             for v in allVertexs:
                 if t in v.txt:
                     self.terms[t][v.h] += 1
+        for t in self.terms:
+            for h in self.terms[t]:
+                if self.terms[t][h] > 0:
+                    self.terms[t][h] = self.layerNum[h] / self.terms[t][h]
+                else:
+                    self.terms[t][h] = 0
+
+    # return max level at default
 
     def getIDF(self, termName, level=0):
         if level == 0:
             level = self.level
-        return self.terms[termName][level]/(self.layerNum[level])
+        return self.terms[termName][level]
 
     def setDF(self):
         for v in Vertex.AllVertexFromVertexs(self.roots):
@@ -107,26 +129,65 @@ class Graph:
             else:
                 pass  # note which doesn't direct connect with terminoloty do not have df
 
-    def setP(self):
-        for n in Vertex.AllVertexFromVertexs(self.roots):
-            count = 0
-            if n.h == self.level:
-                for t in self.getAllTerminologys():
-                    ttf = n.getTF(t)
-                    if ttf > 0:
-                        count += ttf*self.getIDF(t)
-                n.p = count
+    # def setWeight(self):
+        # for n in Vertex.AllVertexFromVertexs(self.roots):
+        #     count = 0
+        #     if n.h == self.level:
+        #         for t in self.getAllTerminologys():
+        #             ttf = n.getTF(t)
+        #             if ttf > 0:
+        #                 count += ttf*self.getIDF(t)
+        #         n.p = count
+        #     else:
+        #
+        #             if n in parent.children:
+        #                 count += 1
+        #         if count > 0:
+        #             n.p = 1/count
+        #         else:
+        #             n.p = 0
+
+    def getWeight(self, n1, n2):
+        if n2.h == self.level:  # n1 is terminology
+            idf = self.terms[n1][self.level]
+            if idf > 0:
+                return n2.getTF(n1) * math.log10(idf)
             else:
-                for parent in Vertex.AllVertexFromVertexs(self.roots):
-                    if n in parent.children:
-                        count += 1
-                n.p = 1/count
+                return 0
+        else:  # n1 is parent node
+            for n in Vertex.AllVertexFromVertexs(self.roots):
+                if n1 in n.children:
+                    return 1 / len(n.children)
 
-    def search(self, query):
-        pass
+    def search(self, queries):
+        ns = Vertex.AllVertexFromVertexs(self.roots)
+        # first process the end level
+        for n in ns:
+            if n.h == self.level:
+                n.p = 0
+                for t in self.terms:
+                    if t in queries:
+                        n.p += self.getWeight(t, n)
+                    else:
+                        n.p += self.getWeight(t, n) / len(t)
+        # process from second end level to root level
+        for i in range(self.level-1, 0, -1):
+            for n in ns:
+                if n.h == i:
+                    num = len(n.children)
+                    if num > 0:
+                        for c in n.children:
+                            n.p += (c.p * (1/num))
+                        #print("来自level", i, '的结点继承了', n.p, '分！')
+                    else:
+                        n.p = 0
 
-    def getAllTerminologys(self, level=0):
-        if level == 0:
+        for n in ns:
+            print("来自 level", n.h, " 的结点，得到了 ",
+                  n.p, "的分数。")
+
+    def getAllTerminologys(self, level="undefine"):
+        if level == "undefine":
             level = self.level
         terms = []
         stri = ""
@@ -234,9 +295,9 @@ def allfilepaths(inputDir, containHidden=False):
     return inputFileNames
 
 
-def query(wp, query):
+def query(wp, queries):
     g = Graph(outputFilePath, 3)
-    g.search(query)
+    g.search(queries)
 
 
 def preprocess(wp):
@@ -253,8 +314,14 @@ if __name__ == "__main__":
 
     wp = wikiProcessor(inputFilePath, outputFilePath)
 
+    debug = False
+    if debug:
+        query(wp, ["Feedback"])
+        exit(0)
+
     if args.preprocess:
         preprocess(wp)
     elif args.query:
-        print("query expression : ", query)
+        print("query slice : ", args.query)
         query(wp, args.query)
+    print("")
