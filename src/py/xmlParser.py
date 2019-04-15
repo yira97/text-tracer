@@ -3,226 +3,192 @@ import os
 import sys
 import argparse
 import math
+from operator import itemgetter, attrgetter
 
+# arguments config
 parser = argparse.ArgumentParser(
-    description="document indexing script using bayesian network. for more information see https://github.com/ethanmiles/Bayesian-Network-for-NLP")
-parser.add_argument('--input', type=str,
-                    help='directory hold result of wikiextractor')
-parser.add_argument('--output', type=str, help='work directory')
-
+    description="This is a document indexing engine using bayesian network.\nFor more information see https://github.com/ethanmiles/Bayesian-Network-for-NLP")
+parser.add_argument('-i','--input', type=str,
+                    help='directory hold result of wikiextractor.')
+parser.add_argument('-o','--output', type=str, help='working directory.')
+parser.add_argument('-l','--level', type=int, help='max search deep of tag.',default=3)
 group = parser.add_mutually_exclusive_group()
 group.add_argument('-p', '--preprocess',
-                   action='store_true', help='preprocess')
-group.add_argument('-q', '--query', nargs='+', help='query')
-
+                   action='store_true', help='start process wikiextractor data and generate work data.')
+group.add_argument('-q', '--query', nargs='+', help='type in the words you want contained by document, split each words by space.')
 args = parser.parse_args()
 
 
-# [remark] : Vertex should not be changed by dot grammar
 class Vertex:
 
-    def __init__(self, h, txt):
-        self.h = h  # level position
-        self.txt = txt  # innerHTML
-        self.children = []  # child nodes
-        self.tf = {}  # term frequencies    e.g.{$term:frequency}
-        self.p = 0
-
-    def getDescendants(self):
-        l = []
-        Vertex.GetDescendants(self, l)
-        return l
-
-    @staticmethod  # For more general purposes
-    def AllVertexFromVertexs(vs):
-        l = []
-        for v in vs:
-            Vertex.GetDescendants(v, l)
-        return l
+    def __init__(self, level, text):
+        self.level = level
+        self.text = text
+        self.children = []
+        self.tf = {}  # term frequencies
+        self.p = 0 # probability
 
     @staticmethod
-    def GetDescendants(v, l):
+    def Descendants(v, l):
         for c in v.children:
-            Vertex.GetDescendants(c, l)
+            Vertex.Descendants(c, l)
         l.append(v)
 
-    # [method] return the frequency of the term
-    # [params] term should only contains printable character
+    @staticmethod
+    def Vertexs(vs):
+        l = []
+        for v in vs:
+            Vertex.Descendants(v, l)
+        return l
+    
+    def getDescendants(self):
+        l = []
+        Vertex.Descendants(self, l)
+        return l
+
     def getTF(self, term):
-        if term in self.tf:
-            return self.tf[term]
-        else:
+        if term not in self.tf:
             self.setTF(term)
-            return self.tf[term]
+        return self.tf[term]
 
     def setTF(self, term):
-        self.tf[term] = len(re.findall(term, self.txt))
-
-    # def getDady(self, crowd):
-    #     for men in crowd:
-    #         if self in men.children:
-    #             return men
-        # print("poor boy.")
-
-    # def countBro(self, crowd):
-    #     return len(self.getDady(crowd).children)
-
-
-# [parms] inputDir : output path of wikiStanderdize
-#            level : max overlaping level
-# [todo] adapt for any xml tag
-
+        self.tf[term] = len(re.findall(term, self.text))
 
 class Graph:
-    def __init__(self, inputFilePath, level=4):
-        self.inputFilePath = inputFilePath
-        self.level = level  # max overlaping level
-        self.layerNum = {}  # num of the every layer
-        for i in range(0, level+1):
-            self.layerNum[i] = 0
+    def __init__(self, workPath, maxLevel=3):
+        self.workPath = workPath
+        self.maxLevel = maxLevel
+        self.layer = {i : 0 for i in range(self.maxLevel+1)}  # vertex number of the every layer
         self.roots = []  # document's roots
         self.terms = {}  # {term: {level:count} }
 
-        # init roots
-        for f in allfilepaths(self.inputFilePath):
-            with open(f, "r", encoding="utf-8") as f_read:
-                docStr = f_read.read()
-                self.roots.append(Graph.GetDocNodes(docStr, level))
+        self.initRoots()
+        self.initTerms()
+        self.initLayer()
+        self.initIDF()
+        self.initTF()
 
-        # init terms (must before init layer number)
-        for t in self.getAllTerminologys():
-            self.terms[t] = self.layerNum.copy()
 
-        # init layer number
-        for v in Vertex.AllVertexFromVertexs(self.roots):
-            self.layerNum[v.h] += 1
 
-        # init idf
-        self.setIDF()
-        self.setDF()
-
-    def setIDF(self):
-        allVertexs = Vertex.AllVertexFromVertexs(self.roots)
+    def initIDF(self):
+        vs = Vertex.Vertexs(self.roots)
         for t in self.terms:
-            for v in allVertexs:
-                if t in v.txt:
-                    self.terms[t][v.h] += 1
+            for v in vs:
+                if t in v.text:
+                    self.terms[t][v.level] += 1
         for t in self.terms:
             for h in self.terms[t]:
                 if self.terms[t][h] > 0:
-                    self.terms[t][h] = self.layerNum[h] / self.terms[t][h]
-                else:
-                    self.terms[t][h] = 0
+                    self.terms[t][h] = math.log(self.layer[h] / self.terms[t][h])
 
-    # return max level at default
-
-    def getIDF(self, termName, level=0):
-        if level == 0:
-            level = self.level
+    def getIDF(self, termName, level):
         return self.terms[termName][level]
 
-    def setDF(self):
-        for v in Vertex.AllVertexFromVertexs(self.roots):
-            if v.h == self.level:
-                for t in self.getAllTerminologys():
-                    v.getTF(t)
+    def initTF(self):
+        for v in Vertex.Vertexs(self.roots):
+            if v.level == self.maxLevel:
+                for t in self.getTerminologys():
+                    v.setTF(t)
             else:
-                pass  # note which doesn't direct connect with terminoloty do not have df
+                pass  # vertex which doesn't direct connect with terminoloty do not have df
 
-    # def setWeight(self):
-        # for n in Vertex.AllVertexFromVertexs(self.roots):
-        #     count = 0
-        #     if n.h == self.level:
-        #         for t in self.getAllTerminologys():
-        #             ttf = n.getTF(t)
-        #             if ttf > 0:
-        #                 count += ttf*self.getIDF(t)
-        #         n.p = count
-        #     else:
-        #
-        #             if n in parent.children:
-        #                 count += 1
-        #         if count > 0:
-        #             n.p = 1/count
-        #         else:
-        #             n.p = 0
+    def terminologyWeight(self,term, leaf):
+        return leaf.getTF(term) * self.getIDF(term,self.maxLevel)
 
-    def getWeight(self, n1, n2):
-        if n2.h == self.level:  # n1 is terminology
-            idf = self.terms[n1][self.level]
-            if idf > 0:
-                return n2.getTF(n1) * math.log10(idf)
-            else:
-                return 0
-        else:  # n1 is parent node
-            for n in Vertex.AllVertexFromVertexs(self.roots):
-                if n1 in n.children:
+    def vertexWeight(self, leaf, trunk): # 1/count(leaf's bro)
+        for n in Vertex.Vertexs(self.roots):
+            if leaf in n.children:
                     return 1 / len(n.children)
 
+    def getWeight(self, n1, n2):
+        if n2.level == self.maxLevel:  # n1 is terminology
+            return self.terminologyWeight(n1,n2)
+        else:  # n1 is normal vertex
+            return self.vertexWeight(n1,n2)
+
+    def getScores(self,vs,num=3):
+        psum = 0
+        for v in vs:
+            psum += v.p
+        for v in vs:
+            v.p /= psum * 0.01
+            if len(v.text) < 10:
+                v.p /= 2
+        return vs
+
+
     def search(self, queries):
-        ns = Vertex.AllVertexFromVertexs(self.roots)
-        # first process the end level
-        for n in ns:
-            if n.h == self.level:
+        vs = Vertex.Vertexs(self.roots)
+        # first process the leaf
+        for n in vs:
+            if n.level == self.maxLevel:
                 n.p = 0
                 for t in self.terms:
                     if t in queries:
                         n.p += self.getWeight(t, n)
                     else:
                         n.p += self.getWeight(t, n) / len(t)
-        # process from second end level to root level
-        for i in range(self.level-1, 0, -1):
-            for n in ns:
-                if n.h == i:
-                    num = len(n.children)
-                    if num > 0:
-                        for c in n.children:
-                            n.p += (c.p * (1/num))
-                        #print("来自level", i, '的结点继承了', n.p, '分！')
-                    else:
-                        n.p = 0
+        # process from second-end level to root level
+        for i in range(self.maxLevel-1, 0, -1):
+            for n in vs:
+                if n.level == i:
+                    for c in n.children:
+                            n.p += (c.p * self.getWeight(c,n))
 
-        for n in ns:
-            print("来自 level", n.h, " 的结点，得到了 ",
-                  n.p, "的分数。")
+        vs = [v for v in vs if v.p > 0]
 
-    def getAllTerminologys(self, level="undefine"):
-        if level == "undefine":
-            level = self.level
+        self.getScores(vs)
+        return vs
+
+    def initLayer(self):
+        for v in Vertex.Vertexs(self.roots): 
+            self.layer[v.level] += 1
+
+    def initTerms(self):
+        for t in self.getTerminologys():
+            self.terms[t] = {i : 0 for i in range(self.maxLevel+1)}
+
+    def getTerminologys(self):
         terms = []
         stri = ""
-        for i in range(1, level+1):
+        for i in range(1, self.maxLevel+1):
             stri += str(i)
-        for f in allfilepaths(self.inputFilePath):
+        for f in allfilepaths(self.workPath):
             with open(f, "r", encoding="utf-8") as f_read:
-                txt = f_read.read()
-                for t in re.findall(r"<h["+stri+r"]>(.*?)</h\d>", txt):
+                text = f_read.read()
+                for t in re.findall(r"<h["+stri+r"]>(.*?)</h\d>", text):
                     terms.append(t)
         return set(terms)
 
+    def initRoots(self):
+        for f in allfilepaths(self.workPath):
+            with open(f, "r", encoding="utf-8") as f_read:
+                text = f_read.read()
+                self.roots.append(Graph.GenerateRoots(text, self.maxLevel))
+
     # [params] do not pass h paramerter.
     @staticmethod
-    def GetDocNodes(txt, maxDeep=4, h=1):
-        if len(txt) == 0:
+    def GenerateRoots(text, maxLevel=4, h=1):
+        if len(text) == 0:
             return
         stri = r"<h"+str(h)+r">.*?</h"+str(h) + \
             r">([\s\S]*?)(?=<h" + str(h)+r">(.*?)</h"+str(h)+r")"
-        inners = re.findall(stri, txt)
+        inners = re.findall(stri, text)
 
         if len(inners) > 0:
             strLast = r"<h"+str(h)+r">" + \
                 inners[-1][-1]+r"</h"+str(h)+r">([\s\S]*)"
         else:
             strLast = r"<h"+str(h)+r">.*?</h"+str(h)+r">([\s\S]*)"
-        last = re.findall(strLast, txt)
+        last = re.findall(strLast, text)
         if len(last) > 0:
             inners.append((last[0], ""))
         children = []
         if len(inners) != 0:
             for i in inners:
-                if (h <= maxDeep):
-                    children.append(Graph.GetDocNodes(i[0], maxDeep, h+1))
-        v = Vertex(h - 1, re.sub(r'<.*>', "", txt))
+                if (h <= maxLevel):
+                    children.append(Graph.GenerateRoots(i[0], maxLevel, h+1))
+        v = Vertex(h - 1, re.sub(r'<.*>', "", text))
         v.children = children
         return v
 
@@ -247,38 +213,38 @@ class wikiProcessor:
     def standerdize(self, extraRules, splitTag="doc"):
 
         with open(self.inputFilePath, "r", encoding="utf-8") as f_read:
-            txt = f_read.read()
+            text = f_read.read()
 
-        txt = re.sub("<doc.*>", "<doc>", txt)
-        txt = re.sub(r"<li>.*</li>", "", txt)
-        txt = re.sub(r"<ul>[\s\S]*?</ul>", "", txt)
-        txt = re.sub(r"<ol>[\s\S]*?</ol>", "", txt)
-        txt = re.sub("</ul>", "", txt)
-        txt = re.sub("&lt;/a&gt;", "", txt)
-        txt = re.sub("&lt;a href=.*?&gt;", "", txt)
-        txt = re.sub(r"\[.*\]", " ", txt)
-        txt = re.sub(r"\(.*\)", "", txt)
-        txt = re.sub("&amp;", " ", txt)
-        txt = re.sub("&nbsp;", " ", txt)
-        txt = re.sub("&lg;", " ", txt)
-        txt = re.sub("&gt;", " ", txt)
+        text = re.sub("<doc.*>", "<doc>", text)
+        text = re.sub(r"<li>.*</li>", "", text)
+        text = re.sub(r"<ul>[\s\S]*?</ul>", "", text)
+        text = re.sub(r"<ol>[\s\S]*?</ol>", "", text)
+        text = re.sub("</ul>", "", text)
+        text = re.sub("&lt;/a&gt;", "", text)
+        text = re.sub("&lt;a href=.*?&gt;", "", text)
+        text = re.sub(r"\[.*\]", " ", text)
+        text = re.sub(r"\(.*\)", "", text)
+        text = re.sub("&amp;", " ", text)
+        text = re.sub("&nbsp;", " ", text)
+        text = re.sub("&lg;", " ", text)
+        text = re.sub("&gt;", " ", text)
         # extra rules
         for rule in extraRules:
-            txt = re.sub(rule, "", txt)
+            text = re.sub(rule, "", text)
         # The following operations must be performed at the end.
-        txt = re.sub("[\n]+", "\n", txt)
-        txt = re.sub('"', " ", txt)  # repace  " character with space
-        txt = re.sub(",", " ", txt)  # replace comma character with space
-        txt = re.sub(r"\.", " ", txt)  # replace point character with space
-        txt = re.sub(";", " ", txt)  # replace ; character with space
-        txt = re.sub(":", " ", txt)  # replace ; character with space
+        text = re.sub("[\n]+", "\n", text)
+        text = re.sub('"', " ", text)  # repace  " character with space
+        text = re.sub(",", " ", text)  # replace comma character with space
+        text = re.sub(r"\.", " ", text)  # replace point character with space
+        text = re.sub(";", " ", text)  # replace ; character with space
+        text = re.sub(":", " ", text)  # replace ; character with space
 
         splitRE = "<"+splitTag+r">[\s\S]*?</"+splitTag+">"
-        txts = re.findall(splitRE, txt)
-        if txts.count == 0:
+        texts = re.findall(splitRE, text)
+        if texts.count == 0:
             print("split fail")
             return
-        for t in txts:
+        for t in texts:
             outputFile = self.outputFilePath+str(self.nameIndex)
             self.nameIndex = self.nameIndex + 1
             with open(outputFile, "w", encoding="utf-8") as f_write:
@@ -297,12 +263,10 @@ def allfilepaths(inputDir, containHidden=False):
 
 def query(wp, queries):
     g = Graph(outputFilePath, 3)
-    g.search(queries)
-
+    return g.search(queries)
 
 def preprocess(wp):
     wp.run()
-
 
 def test():
     pass
@@ -318,10 +282,10 @@ if __name__ == "__main__":
     if debug:
         query(wp, ["Feedback"])
         exit(0)
-
     if args.preprocess:
         preprocess(wp)
     elif args.query:
         print("query slice : ", args.query)
-        query(wp, args.query)
-    print("")
+        res = query(wp, args.query)
+        for v in res:
+            print("\nScore: ",int(v.p),"\nlevel: ",v.level,"\n text: ",v.text[:50].strip().replace("\n"," "),"...")
