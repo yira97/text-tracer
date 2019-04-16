@@ -1,10 +1,10 @@
-# Bayesian Network For NLP
-there is two version of this project
+# text-tracer
+a text-searching script base on **bayesian network** and **word2vec**
+
 1. ~~c++11~~
 2. python3
 ## install
 ### 1. get the latest version of wiki dumpfile
-
     $ curl https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2  
     $ 7z e enwiki-latest-pages-articles.xml.bz2
 ### 2. parse the origin xml using [wikiextractor](https://github.com/attardi/wikiextractor)
