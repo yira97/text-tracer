@@ -3,20 +3,28 @@ import os
 import sys
 import argparse
 import math
-from operator import itemgetter, attrgetter
+from gensim.models import Word2Vec
 
 # arguments config
 parser = argparse.ArgumentParser(
     description="This is a document indexing engine using bayesian network.\nFor more information see https://github.com/ethanmiles/Bayesian-Network-for-NLP")
-parser.add_argument('-i','--input', type=str,
-                    help='directory hold result of wikiextractor.')
-parser.add_argument('-o','--output', type=str, help='working directory.')
-parser.add_argument('-l','--level', type=int, help='max search deep of tag.',default=3)
+parser.add_argument('-i', '--input', type=str,
+                    help='directory hold result of wikiextractor.', dest="input_path")
+parser.add_argument('-o', '--work', type=str,
+                    help='working directory.', dest="work_path")
+parser.add_argument('-t', '--filter', type=str,
+                    help='terminology filter text path')
+parser.add_argument('-l', '--level', type=int,
+                    help='max search deep of tag.', default=3)
 group = parser.add_mutually_exclusive_group()
 group.add_argument('-p', '--preprocess',
                    action='store_true', help='start process wikiextractor data and generate work data.')
-group.add_argument('-q', '--query', nargs='+', help='type in the words you want contained by document, split each words by space.')
+group.add_argument('-q', '--query', nargs='+',
+                   help='type in the words you want contained by document, split each words by space.')
 args = parser.parse_args()
+
+# debug mode
+debug = False
 
 
 class Vertex:
@@ -26,7 +34,7 @@ class Vertex:
         self.text = text
         self.children = []
         self.tf = {}  # term frequencies
-        self.p = 0 # probability
+        self.p = 0  # probability
 
     @staticmethod
     def Descendants(v, l):
@@ -40,7 +48,7 @@ class Vertex:
         for v in vs:
             Vertex.Descendants(v, l)
         return l
-    
+
     def getDescendants(self):
         l = []
         Vertex.Descendants(self, l)
@@ -54,11 +62,13 @@ class Vertex:
     def setTF(self, term):
         self.tf[term] = len(re.findall(term, self.text))
 
+
 class Graph:
     def __init__(self, workPath, maxLevel=3):
         self.workPath = workPath
         self.maxLevel = maxLevel
-        self.layer = {i : 0 for i in range(self.maxLevel+1)}  # vertex number of the every layer
+        # vertex number of the every layer
+        self.layer = {i: 0 for i in range(self.maxLevel+1)}
         self.roots = []  # document's roots
         self.terms = {}  # {term: {level:count} }
 
@@ -67,8 +77,6 @@ class Graph:
         self.initLayer()
         self.initIDF()
         self.initTF()
-
-
 
     def initIDF(self):
         vs = Vertex.Vertexs(self.roots)
@@ -79,7 +87,8 @@ class Graph:
         for t in self.terms:
             for h in self.terms[t]:
                 if self.terms[t][h] > 0:
-                    self.terms[t][h] = math.log(self.layer[h] / self.terms[t][h])
+                    self.terms[t][h] = math.log(
+                        self.layer[h] / self.terms[t][h])
 
     def getIDF(self, termName, level):
         return self.terms[termName][level]
@@ -92,21 +101,21 @@ class Graph:
             else:
                 pass  # vertex which doesn't direct connect with terminoloty do not have df
 
-    def terminologyWeight(self,term, leaf):
-        return leaf.getTF(term) * self.getIDF(term,self.maxLevel)
+    def terminologyWeight(self, term, leaf):
+        return leaf.getTF(term) * self.getIDF(term, self.maxLevel)
 
-    def vertexWeight(self, leaf, trunk): # 1/count(leaf's bro)
+    def vertexWeight(self, leaf, trunk):  # 1/count(leaf's bro)
         for n in Vertex.Vertexs(self.roots):
             if leaf in n.children:
-                    return 1 / len(n.children)
+                return 1 / len(n.children)
 
     def getWeight(self, n1, n2):
         if n2.level == self.maxLevel:  # n1 is terminology
-            return self.terminologyWeight(n1,n2)
+            return self.terminologyWeight(n1, n2)
         else:  # n1 is normal vertex
-            return self.vertexWeight(n1,n2)
+            return self.vertexWeight(n1, n2)
 
-    def getScores(self,vs,num=3):
+    def getScores(self, vs, num=3):
         psum = 0
         for v in vs:
             psum += v.p
@@ -116,8 +125,11 @@ class Graph:
                 v.p /= 2
         return vs
 
-
     def search(self, queries):
+        print("query before transform: ", queries)
+        queries = self.match(queries)
+        print(" query after transform: ", queries)
+
         vs = Vertex.Vertexs(self.roots)
         # first process the leaf
         for n in vs:
@@ -133,7 +145,7 @@ class Graph:
             for n in vs:
                 if n.level == i:
                     for c in n.children:
-                            n.p += (c.p * self.getWeight(c,n))
+                        n.p += (c.p * self.getWeight(c, n))
 
         vs = [v for v in vs if v.p > 0]
 
@@ -141,12 +153,12 @@ class Graph:
         return vs
 
     def initLayer(self):
-        for v in Vertex.Vertexs(self.roots): 
+        for v in Vertex.Vertexs(self.roots):
             self.layer[v.level] += 1
 
     def initTerms(self):
         for t in self.getTerminologys():
-            self.terms[t] = {i : 0 for i in range(self.maxLevel+1)}
+            self.terms[t] = {i: 0 for i in range(self.maxLevel+1)}
 
     def getTerminologys(self):
         terms = []
@@ -158,7 +170,12 @@ class Graph:
                 text = f_read.read()
                 for t in re.findall(r"<h["+stri+r"]>(.*?)</h\d>", text):
                     terms.append(t)
-        return set(terms)
+        terms = [term.lower() for term in terms if len(term.split()) <= 1]
+        terms = set(terms)
+        with open("stopwords.txt", "r", encoding="utf-8") as f_read:
+            stopwords = f_read.read()
+            terms - set(stopwords.split())
+        return terms
 
     def initRoots(self):
         for f in allfilepaths(self.workPath):
@@ -192,8 +209,28 @@ class Graph:
         v.children = children
         return v
 
+    def match(self, queries):
+        queries = [q.lower() for q in queries]
+        model = Word2Vec.load("word2vec.model")
+        res = []
+        for q in queries:
+            try:
+                max_t = ""
+                max_sim = 0
+                for t in self.terms:
+                    sim = model.wv.similarity(q, t)
+                    if sim > max_sim:
+                        max_sim = sim
+                        max_t = t
+                res.append(max_t)
+            except KeyError as e:
+                # ignore word if engine never see it before
+                pass
+        return res
 
 # wikiStanderdize(inputFilePath, outputFilePath)
+
+
 class wikiProcessor:
     def __init__(self, inputFilePath, outputFilePath):
         self.inputFilePath = inputFilePath
@@ -206,6 +243,7 @@ class wikiProcessor:
     def wikiStanderdize(self):
         rule = [r"<doc>.*?<h1>.*?</h1>\n.*?may refer to[\s\S]*?</doc>", r"<h2>See also</h2>", r"<h2>References</h2>",
                 r"<h3>Specific</h3>", r"<h3>General</h3>", r"<h2>External links</h2>"]
+
         for f in allfilepaths(self.inputFilePath):
             print("start process : ", f)
             self.standerdize(f, rule)
@@ -213,7 +251,7 @@ class wikiProcessor:
     def standerdize(self, extraRules, splitTag="doc"):
 
         with open(self.inputFilePath, "r", encoding="utf-8") as f_read:
-            text = f_read.read()
+            text = f_read.read().lower()
 
         text = re.sub("<doc.*>", "<doc>", text)
         text = re.sub(r"<li>.*</li>", "", text)
@@ -230,7 +268,7 @@ class wikiProcessor:
         text = re.sub("&gt;", " ", text)
         # extra rules
         for rule in extraRules:
-            text = re.sub(rule, "", text)
+            text = re.sub(rule.lower(), "", text)
         # The following operations must be performed at the end.
         text = re.sub("[\n]+", "\n", text)
         text = re.sub('"', " ", text)  # repace  " character with space
@@ -261,31 +299,55 @@ def allfilepaths(inputDir, containHidden=False):
     return inputFileNames
 
 
-def query(wp, queries):
-    g = Graph(outputFilePath, 3)
+def generateQueryModel(workPath):
+    # train word2vec
+    texts = ""
+    for f in allfilepaths(workPath):
+        with open(f, "r", encoding="utf-8") as f_read:
+            texts += f_read.read()
+    texts = texts.lower()
+    texts = re.sub(r"<.*?>", "", texts)
+    #texts = re.sub(r"[^(a-zA-Z0-9)\n \S]", "", texts)
+    texts = [text for text in texts.split('\n') if text.strip() != ""]
+    ok_texts = [text.split() for text in texts]
+    # # keep "wordA wordB" header integrited.
+    # for text in texts:
+    #     if len(text.split()) < 3:
+    #         ok_texts.append(text)
+    #     else:
+    #         ok_texts.append(text.split())
+    print(ok_texts)
+    model = Word2Vec(ok_texts, size=100, window=5, min_count=1, workers=6)
+    model.save("word2vec.model")
+
+
+def query(queries, workPath):
+
+    g = Graph(workPath, 3)
     return g.search(queries)
 
-def preprocess(wp):
-    wp.run()
+
+def show(res):
+    for v in res:
+        print("\nScore: ", int(v.p), "\nlevel: ", v.level, "\n text: (",
+              v.text[:50].strip().replace("\n", " "), ")")
+
+
+def preprocess(inputPath, workPath):
+    wikiProcessor(inputPath, workPath).run()
+    generateQueryModel(workPath)
+
 
 def test():
     pass
 
 
 if __name__ == "__main__":
-    inputFilePath = "/Users/ethan/Documents/Development/wikiextractor/text2/"
-    outputFilePath = "/Users/ethan/Documents/Development/temp/s/"
-
-    wp = wikiProcessor(inputFilePath, outputFilePath)
-
-    debug = False
-    if debug:
-        query(wp, ["Feedback"])
-        exit(0)
+    # if debug:
+    #     # query(["Feedback"], args.work_path)
+    #     exit(0)
     if args.preprocess:
-        preprocess(wp)
+        preprocess(args.input_path, args.work_path)
     elif args.query:
-        print("query slice : ", args.query)
-        res = query(wp, args.query)
-        for v in res:
-            print("\nScore: ",int(v.p),"\nlevel: ",v.level,"\n text: ",v.text[:50].strip().replace("\n"," "),"...")
+        res = query(args.query, args.work_path)
+        show(res)
