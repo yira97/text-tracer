@@ -12,3 +12,4 @@ src/test/temp/*
 
 */venv/
 venv
+.model

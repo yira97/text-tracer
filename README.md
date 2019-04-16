@@ -14,10 +14,10 @@ there is two version of this project
     $ python3 --html -s WikiExtractor.py
 ### 3. build graph
     $ cd .. && git clone https://github.com/ethanmiles/Bayesian-Network-for-NLP && cd Bayesian-Network-for-NLP
-    $ python3 xmlParser.py
+    $ python3 xmlParser.py  --input x --work x -p
 
-### 4. ~~inference test~~
-    $ python3 xmlParser.py -t "Heavy metal music"
+### 4. start searching! 
+    $ python3 xmlParser.py  --work x -q feedback
 ## dev schedule
 ### 1. corpus processing
 xml_parser.hpp contains a series of xml processing tools which can basically cover various requirement of student or scholar.
