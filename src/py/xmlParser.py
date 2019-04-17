@@ -210,22 +210,31 @@ class Graph:
         return v
 
     def match(self, queries):
+        MATCH_GAP = 0.13
         queries = [q.lower() for q in queries]
         model = Word2Vec.load("word2vec.model")
         res = []
         for q in queries:
             try:
-                max_t = ""
+                alter_t = []
                 max_sim = 0
                 for t in self.terms:
                     sim = model.wv.similarity(q, t)
                     if sim > max_sim:
                         max_sim = sim
-                        max_t = t
-                res.append(max_t)
+                for t in self.terms:
+                    if model.wv.similarity(q, t) > max_sim - MATCH_GAP:
+                        alter_t.append(t)
+                for t in alter_t:
+                    res.append(t)
             except KeyError as e:
                 # ignore word if engine never see it before
                 pass
+
+        # stop search if no matchd
+        if len(res) == 0:
+            print("no result")
+            exit(0)
         return res
 
 # wikiStanderdize(inputFilePath, outputFilePath)
