@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 import math
+import heapq
 from gensim.models import Word2Vec
 
 # arguments config
@@ -23,8 +24,7 @@ group.add_argument('-q', '--query', nargs='+',
                    help='type in the words you want contained by document, split each words by space.')
 args = parser.parse_args()
 
-# debug mode
-debug = False
+
 
 
 class Vertex:
@@ -115,19 +115,27 @@ class Graph:
         else:  # n1 is normal vertex
             return self.vertexWeight(n1, n2)
 
-    def getScores(self, vs, num=3):
+    def genScores(self, vs, min_return_score=50, short_penalty_limit=30):
         psum = 0
+        pmax = 0
         for v in vs:
-            psum += v.p
-        for v in vs:
-            v.p /= psum * 0.01
-            if len(v.text) < 10:
+            # penalty for short text
+            if len(v.text) < short_penalty_limit:
                 v.p /= 2
+            if v.p > pmax:
+                pmax = v.p
+            psum += v.p
+        print("pmax: ",pmax,"\npsum: ",psum)
+        for v in vs:
+            v.p /= pmax
+            v.p *= 100
+        vs = [v for v in vs if v.p > min_return_score ] 
         return vs
+
 
     def search(self, queries):
         print("query before transform: ", queries)
-        queries = self.match(queries)
+        #queries = self.match(queries)
         print(" query after transform: ", queries)
 
         vs = Vertex.Vertexs(self.roots)
@@ -147,9 +155,9 @@ class Graph:
                     for c in n.children:
                         n.p += (c.p * self.getWeight(c, n))
 
-        vs = [v for v in vs if v.p > 0]
+        
 
-        self.getScores(vs)
+        vs = self.genScores(vs)
         return vs
 
     def initLayer(self):
@@ -210,7 +218,7 @@ class Graph:
         return v
 
     def match(self, queries):
-        MATCH_GAP = 0.13
+        MATCH_GAP = 0.00001
         queries = [q.lower() for q in queries]
         model = Word2Vec.load("word2vec.model")
         res = []
@@ -257,9 +265,9 @@ class wikiProcessor:
             print("start process : ", f)
             self.standerdize(f, rule)
 
-    def standerdize(self, extraRules, splitTag="doc"):
+    def standerdize(self, f, extraRules, splitTag="doc"):
 
-        with open(self.inputFilePath, "r", encoding="utf-8") as f_read:
+        with open(f, "r", encoding="utf-8") as f_read:
             text = f_read.read().lower()
 
         text = re.sub("<doc.*>", "<doc>", text)
@@ -307,6 +315,8 @@ def allfilepaths(inputDir, containHidden=False):
                 inputFileNames.append(inputFileName)
     return inputFileNames
 
+def load_stopwords():
+    pass
 
 def generateQueryModel(workPath):
     # train word2vec
@@ -351,12 +361,22 @@ def test():
     pass
 
 
+debug = False
 if __name__ == "__main__":
-    # if debug:
-    #     # query(["Feedback"], args.work_path)
-    #     exit(0)
+    if debug:
+        wikiProcessor(args.input_path, args.work_path).run()
+        generateQueryModel(args.work_path)
+        res = query(["anarchism"], "/Users/emiles/Development/biye/temp/")
+        show(res)
+        exit(0)
     if args.preprocess:
         preprocess(args.input_path, args.work_path)
     elif args.query:
         res = query(args.query, args.work_path)
         show(res)
+
+"""
+config:
+python3 xmlParser.py --input /Users/emiles/Development/biye/wikiextractor/text/   --work /Users/emiles/Development/biye/temp/ -p
+python3 xmlParser.py -q  anarchism   --work /Users/emiles/Development/biye/temp
+"""
